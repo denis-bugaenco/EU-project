@@ -1,7 +1,8 @@
 # EU-project
 The educational divide in UE regions: linking technological advancement to socioeconomic outcomes
 
-The primary objective of this project is to assess the influence of technological development in various
+The project is based on "EU Regional Competitiveness Index 2.0 2022 edition" and its
+primary objective is to assess the influence of technological development in various
 European regions on their education levels, quantified through the Education Index, which we derived
 from multiple variables related to the educational attainment of each region.
 Following this, we conducted a detailed analysis of the disparities in education levels across different
