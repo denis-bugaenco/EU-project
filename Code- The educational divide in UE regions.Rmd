@@ -1,0 +1,372 @@
+---
+title: "Data Science lab"
+output: pdf_document
+date: "2024-08-27"
+---
+
+# The educational divide in UE regions: linking technological advancement to socioeconomic outcomes
+
+## Denis Bugaenco (912256), Davide Croatto (909800), Eleonora Zullo (911365)
+
+
+First of all, we set the working directory and load the data.
+
+```{r}
+setwd("/Users/denisbugaenco/Desktop/ds_project/Dataset - Regional competitiveness")
+getwd()
+
+## install.packages('readxl')
+
+library(readxl)
+sheet_name = 'RCI_2022_raw_data'
+data = data.frame(read_excel("/Users/denisbugaenco/Desktop/ds_project/Dataset - Regional competitiveness/xRCI_2022_raw_data.xlsx", sheet = sheet_name))
+```
+
+We create a new dataframe containing only the variables of interest and we transform the null values in actual NA.
+
+```{r}
+df = data[, c(1:2, 31:38, 51:56)]
+df[df == 'NA'] = NA
+```
+
+Then, we analyse the null values and the outliers that can influence on the normalization process.
+
+```{r}
+library(skimr)
+skim_without_charts(df)
+```
+
+We have 234 different European regions
+
+We analyse better the missing values.
+
+```{r}
+na_count_per_row <- rowSums(is.na(df))
+rows_with_na <- na_count_per_row > 0
+df_with_na <- df[rows_with_na,]
+df_with_na
+```
+
+We have only 36 rows with null values. 
+
+Then, we proceed to transform the variables in their correct types (characters into numeric).
+
+```{r}
+df$Low.achievement.in.reading..15.year.olds. = as.numeric(df$Low.achievement.in.reading..15.year.olds.)
+
+df$Higher.educational.attainment = as.numeric(df$Higher.educational.attainment)
+
+df$Lifelong.learning = as.numeric(df$Lifelong.learning)
+
+df$Early.school.leavers = as.numeric(df$Early.school.leavers)
+
+df$Lower.secondary.completion.only = as.numeric(df$Lower.secondary.completion.only)
+
+df$Households.with.broadband.access.... = as.numeric(df$Households.with.broadband.access....)
+
+df$Individuals.buying.over.internet.the.last.year = as.numeric(df$Individuals.buying.over.internet.the.last.year)
+
+df$Access.to.high.speed.broadband = as.numeric(df$Access.to.high.speed.broadband)
+
+skim_without_charts(df)
+```
+
+Now, we proceed to substitute the missing values with a new value computed with the mice algorithm.
+
+```{r}
+## install.packages("mice")
+library(mice)
+
+imputed_data = mice(df, m=5, method='pmm', seed=123)
+summary(imputed_data)
+
+completed_data = complete(imputed_data, 1)
+skim_without_charts(completed_data)
+```
+
+Check: the value of Early.school.leavers in Burgenland was null.
+
+```{r}
+completed_data[2,]
+```
+
+Successively, we check for the outliers using boxplots.
+
+```{r}
+boxplot(completed_data$Low.achievement.in.reading..15.year.olds., main = 'Boxplot of Low.achievement.in.reading..15.year.olds.')
+
+boxplot(completed_data$Low.achievement.in.maths..15.year.olds., main = 'Boxplot of Low.achievement.in.maths..15.year.olds.')
+
+boxplot(completed_data$Low.achievement.in.science..15.year.olds., main = 'Boxplot off Low.achievement.in.science..15.year.olds.')
+
+boxplot(completed_data$Higher.educational.attainment, main = 'Boxplot of Higher.educational.attainment')
+
+boxplot(completed_data$Lifelong.learning, main = ' Boxplot of Lifelong.learning')
+
+boxplot(completed_data$Early.school.leavers, main = 'Boxplot of Early.school.leavers')
+
+boxplot(completed_data$University.accessibility, main = 'Boxplot of University.accessibility')
+
+boxplot(completed_data$Lower.secondary.completion.only, main = 'Boxplot of Lower.secondary.completion.only')
+
+boxplot(completed_data$Households.with.broadband.access...., main = 'Boxplot of Households.with.broadband.access....')
+
+boxplot(completed_data$Individuals.buying.over.internet.the.last.year, main = 'Boxplot of Individuals.buying.over.internet.the.last.year')
+
+boxplot(completed_data$Enterprises.having.received.orders.online..at.least.1..., main = 'Boxplot of Enterprises.having.received.orders.online..at.least.1...')
+
+boxplot(completed_data$Access.to.high.speed.broadband, main = 'Boxplot of Access.to.high.speed.broadband')
+
+boxplot(completed_data$Individuals.with.above.basic.overall.digital.skills, main = 'Boxplot of Individuals.with.above.basic.overall.digital.skills')
+```
+
+We analyse better the outliers of the first variable: Low.achievement.in.reading..15.year.olds.
+
+```{r}
+completed_data[completed_data$Low.achievement.in.reading..15.year.olds. > 40,]
+```
+
+To address the issue of outliers, we implemented the technique of Winsorization on variables exhibiting significantly skewed distributions. Then, first of all, we compute the skewness and the kurtosis for each numeric variable of interest.
+
+```{r}
+## install.packages("e1071")
+library(e1071)
+
+numeric_vars <- completed_data[, sapply(completed_data, is.numeric)]
+
+skewness_values <- sapply(numeric_vars, skewness)
+kurtosis_values <- sapply(numeric_vars, kurtosis)
+
+skewness_values
+```
+
+```{r}
+kurtosis_values
+```
+
+In order for outliers in the data not to drive the results of the composite indicator, we winsorized those variables (using the DescTools library) that show extremely skewed distributions (absolute skewness > 2 and kurtosis > 3.5). Winsorization means that we set the highest values to the next highest ones up until the point that skewness and kurtosis drop within acceptable ranges. 
+
+Following this strategy, we winsorized only the variable Low.achievement.in.reading..15.year.olds., that has a kurtosis equal to 3.7238502.
+
+```{r}
+## install.packages("DescTools")
+library(DescTools)
+
+
+completed_data$Low.achievement.in.reading..15.year.olds._wins = Winsorize(completed_data$Low.achievement.in.reading..15.year.olds., val = quantile(completed_data$Low.achievement.in.reading..15.year.olds., probs = c(0.05, 0.95), na.rm = FALSE))
+
+boxplot(completed_data$Low.achievement.in.reading..15.year.olds._wins)
+boxplot(completed_data$Low.achievement.in.reading..15.year.olds.)
+
+completed_data$Low.achievement.in.reading..15.year.olds. = completed_data$Low.achievement.in.reading..15.year.olds._wins 
+
+completed_data$Low.achievement.in.reading..15.year.olds._wins = NULL
+```
+
+Now we can proceed with the normalization of the variables remembering that some variables can have a negative impact on education. 
+
+Therefore, variables with a negative impact on education should be inversed so higher values indicate better outcomes. For example, low achievement rates are negative, so we inverse these by subtracting from 1.
+
+On the other hand, for positive impact variables (where higher values are better), we normalize directly.
+
+More precisely, we decide to compute the min-max normalization as follows.
+
+```{r}
+## VARIABLES WITH A NEGATIVE IMPACT
+
+negative_normalize_variables <- function(completed_data, negative_variable_names) {
+  # Load necessary package
+  library(dplyr)
+  
+  # Calculate min and max for each variable and normalize
+  completed_data %>% 
+    mutate(across(all_of(negative_variable_names), ~ {
+      1 - ( . - min(., na.rm = TRUE)) / (max(., na.rm = TRUE) - min(., na.rm = TRUE))
+    }))
+}
+
+# Specifying the variable names
+negative_variable_names <- c("Low.achievement.in.reading..15.year.olds.",
+                            "Low.achievement.in.maths..15.year.olds.",
+                            "Low.achievement.in.science..15.year.olds.",
+                            "Early.school.leavers",
+                            "Lower.secondary.completion.only")
+
+# Applying the normalization function
+df_normalized <- negative_normalize_variables(completed_data, negative_variable_names)
+
+# Check the results
+summary(df_normalized)
+```
+
+```{r}
+## VARIABLES WITH POSITIVE IMPACT
+
+positive_normalize_variables <- function(completed_data, positive_variable_names) {
+  # Load necessary package
+  library(dplyr)
+  
+  # Calculate min and max for each variable and normalize
+  completed_data %>% 
+    mutate(across(all_of(positive_variable_names), ~ {
+      ( . - min(., na.rm = TRUE)) / (max(., na.rm = TRUE) - min(., na.rm = TRUE))
+    }))
+}
+
+# Specifying the variable names
+positive_variable_names <- c("Higher.educational.attainment",
+                            "Lifelong.learning",
+                            "University.accessibility",
+                            "Households.with.broadband.access....",
+                            "Individuals.buying.over.internet.the.last.year",
+                            "Enterprises.having.received.orders.online..at.least.1...",
+                            "Enterprises.with.fixed.broadband.access.",
+                            "Access.to.high.speed.broadband",
+                            "Individuals.with.above.basic.overall.digital.skills")
+
+# Applying the normalization function
+df_normalized <- positive_normalize_variables(df_normalized, positive_variable_names)
+
+# Check the results
+summary(df_normalized)
+```
+
+In order to verify that the Normalization has been done correctly, we check the correlation between the observed variable and the normalized variable. It must be equal to 1 or -1.
+
+```{r}
+cor(df_normalized$Low.achievement.in.reading..15.year.olds., completed_data$Low.achievement.in.reading..15.year.olds.)
+
+cor(df_normalized$Enterprises.having.received.orders.online..at.least.1..., completed_data$Enterprises.having.received.orders.online..at.least.1...)
+```
+We proceed with the normalization check for each variable as follows.
+
+```{r}
+calculate_correlations <- function(completed_data, df_normalized) {
+  correlations <- mapply(function(x, y) cor(x, y, use = "complete.obs"), completed_data, df_normalized)
+
+  # Create a data frame to return results in a tidy format
+  result <- data.frame(
+    Variable = names(completed_data),
+    Variable_normalized = names(df_normalized),
+    Correlation = correlations
+  )
+  
+  return(result)
+}
+
+correlation_results <- calculate_correlations(completed_data[,3:16], df_normalized[,3:16])
+correlation_results
+```
+
+Now we proceed to create the education index computing the average of the normalized variables of interest.
+
+```{r}
+df_normalized$education_index = rowMeans(df_normalized[, 3:ncol(df_normalized)])
+df_normalized[,c(1,2,17)]
+```
+
+We order the dataset to discover the top and the bottom EU regions for education index.
+
+```{r}
+df_normalized[order(-df_normalized$education_index), c(1,2,17)]
+```
+
+```{r}
+df_normalized[order(df_normalized$education_index), c(1,2,17)]
+```
+
+Then, we proceed by grouping the data per country in order to see the education index related to each country.
+
+```{r}
+df_normalized$country = substr(df_normalized$NUTS, 1,2)
+
+head(df_normalized)
+```
+
+```{r}
+education_index_mean <- summarise(group_by(df_normalized, country), mean_education_index = mean(education_index, na.rm = TRUE))
+
+education_index_mean
+```
+
+Finally, we can analyse the relation between the education rate and the technological readiness using a linear regression.
+
+We firstly analyse the correlation between the different variables using a corrplot and then we create the linear model using the lm() function.
+
+```{r}
+library(corrplot)
+corrplot(cor(df_normalized[,c(11:17)]), tl.cex = 0.5)
+```
+
+```{r}
+data_mod = df_normalized[,c(11:17)]
+
+model = lm(data = data_mod, formula = education_index ~ .)
+summary(model)
+```
+
+```{r}
+step(model)
+```
+Moreover, to analyse the relationship between the Education Index just created and the GDP per capita, the corruption, the employment rate and the NEET rate, we create the following plots.
+
+```{r}
+gdp_dataset <- read_excel("C:/Users/Eleonora/Desktop/DS lab/Regional competitiveness - RCI 2022.xlsx", sheet = "RCI_2022_population_GDP", skip = 3)
+gdp_dataset <- gdp_dataset[,c(1,11)]
+str(gdp_dataset)
+
+library(ggplot2)
+```
+
+```{r}
+df_normalized$gdp.per.capita <- as.numeric(gdp_dataset$Average...11)
+df_normalized$color <- cut(df_normalized$education_index, breaks = c(-Inf,0.33,0.66, Inf), labels = c("Low education", "Medium education", "High education"))
+ggplot(df_normalized, aes(x=education_index, y=gdp.per.capita, color=color))+
+  geom_point()+
+  geom_smooth(se=TRUE, color="turquoise", fill = "powderblue")+
+  labs(title="GDP per capita vs Education",x="Education Index", y="GDP per capita", color= "Education level")+
+  theme_minimal()+
+  theme(legend.position = c(0.05,0.95),legend.justification = c(0,1), legend.background = element_rect(color = "grey42", fill = "white", size = 0.5, linetype = "solid"), plot.title=element_text(hjust = 0.5))
+```
+
+
+```{r fig.asp=1}
+library(ggplot2)
+df_normalized$Corruption <- as.numeric(data$Corruption)
+df_normalized$color <- cut(df_normalized$education_index, breaks = c(-Inf,0.33,0.66, Inf), labels = c("Low education", "Medium education", "High education"))
+ggplot(df_normalized, aes(x=education_index, y=Corruption, color=color))+
+  geom_point()+
+  geom_smooth(se=TRUE, color="turquoise", fill = "powderblue")+
+  labs(title="Corruption vs Education",x="Education Index", y="Corruption", color= "Education level")+
+  theme_minimal()+
+  theme(legend.position = c(0.05,0.95),legend.justification = c(0,1), legend.background = element_rect(color = "grey42", fill = "white", size = 0.5, linetype = "solid"), plot.title=element_text(hjust = 0.5))
+```
+
+
+```{r fig.asp=1}
+df_normalized$Employment.rate..excluding.agriculture. <- as.numeric(data$Employment.rate..excluding.agriculture.)
+df_normalized$color <- cut(df_normalized$education_index, breaks = c(-Inf,0.33,0.66, Inf), labels = c("Low education", "Medium education", "High education"))
+ggplot(df_normalized, aes(x=education_index, y=Employment.rate..excluding.agriculture., color=color))+
+  geom_point()+
+  geom_smooth(se=TRUE, color="turquoise", fill = "powderblue")+
+  labs(title="Employment rate (excluding agriculture) vs Education",x="Education Index", y="Employment.rate..excluding.agriculture.", color= "Education level")+
+  theme_minimal()+
+  theme(legend.position = c(0.05,0.95),legend.justification = c(0,1), legend.background = element_rect(color = "grey42", fill = "white", size = 0.5, linetype = "solid"), plot.title=element_text(hjust = 0.5))
+```
+
+
+```{r fig.asp=1}
+df_normalized$NEET.rate <- as.numeric(data$NEET.rate)
+df_normalized$color <- cut(df_normalized$education_index, breaks = c(-Inf,0.33,0.66, Inf), labels = c("Low education", "Medium education", "High education"))
+ggplot(df_normalized, aes(x=education_index, y=NEET.rate, color=color))+
+  geom_point()+
+  geom_smooth(se=TRUE, color="turquoise", fill = "powderblue")+
+  labs(title="NEET rate vs Education",x="Education Index", y="NEET.rate", color= "Education level")+
+  theme_minimal()+
+  theme(legend.position = c(0.70,0.95),legend.justification = c(0,1), legend.background = element_rect(color = "grey42", fill = "white", size = 0.5, linetype = "solid"), plot.title=element_text(hjust = 0.5))
+```
+
+
+```
+
+
